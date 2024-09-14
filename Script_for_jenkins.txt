@@ -1,0 +1,62 @@
+pipeline {
+    agent any
+    environment {
+        REMOTE_USER = 'sb'
+        REMOTE_HOST = '192.168.56.118'
+        SSH_CREDENTIALS_ID = 'remote-ssh'
+    }
+    stages {
+        stage('Pull Code') {
+            steps {
+                git 'https://github.com/SnehaKhade28/PHP-MYSQL.git'
+            }
+        }
+        stage('Deploy Web Server') {
+            steps {
+                sshagent([SSH_CREDENTIALS_ID]) {
+                    sh """
+                   ssh sb@192.168.56.118 'cd /home/sb/PHP-MYSQL && docker-compose down && docker-compose up -d ; snort -T -c/etc/snort/snort.conf  '
+
+                    """
+                }
+            }
+        }
+        stage('Verify Deployment') {
+            steps {
+                sshagent([SSH_CREDENTIALS_ID]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no sb@192.168.56.118 '
+                        curl -I http://localhost:80
+                    '
+                    """
+                }
+            }
+        }
+    }
+    post {
+    always {
+        script {
+            def subject = "'${currentBuild.result}'"
+            def body = """\
+            Project: ${env.JOB_NAME}
+            Build Number: ${env.BUILD_NUMBER}
+            URL: ${env.BUILD_URL}
+            """.stripIndent()
+            
+            // Send email
+            mail(
+                to: 'khadesneha01@gmail.com',
+                subject: subject,
+                body: body
+            )
+            
+            // Optionally, use emailext for attachments
+            emailext attachmentsPattern: 'trivy.txt', 
+                body: body, 
+                subject: subject, 
+                mimeType: 'text/plain', 
+                to: 'khadesneha01@gmail.com'
+        }
+    }
+}
+
